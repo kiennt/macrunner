@@ -15,8 +15,12 @@
     "lint:write": "eslint --fix --ext .tsx,.ts"
   },
   "files": [
-    "dist"
+    "dist",
+    "index.js"
   ],
+  "bin": {
+    "macrunner": "index.js"
+  },
   "husky": {
     "hooks": {
       "pre-commit": "lint-staged"
@@ -27,8 +31,19 @@
       "yarn run lint:write"
     ]
   },
-  "dependencies": {},
+  "dependencies": {
+    "@octokit/rest": "^18.0.15",
+    "chalk": "^4.1.0",
+    "clipanion": "^3.0.0-rc.5",
+    "enquirer": "^2.3.6",
+    "node-fetch": "^2.6.1",
+    "shelljs": "^0.8.4",
+    "uuid": "^8.3.2"
+  },
   "devDependencies": {
+    "@types/node-fetch": "^2.5.8",
+    "@types/shelljs": "^0.8.8",
+    "@types/uuid": "^8.3.0",
     "@typescript-eslint/eslint-plugin": "^4.14.1",
     "@typescript-eslint/parser": "^4.14.1",
     "eslint": "^7.18.0",
