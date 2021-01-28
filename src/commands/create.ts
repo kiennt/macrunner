@@ -3,16 +3,12 @@ import { prompt } from 'enquirer';
 import chalk from 'chalk';
 
 import { IGithubClient, GithubClient } from '../github';
+import { GithubAddress } from '../github_address';
 import { Workspace } from '../workspace';
 
 interface Condition {
   condition: () => Promise<boolean>;
   message: string;
-}
-
-interface GithubRepo {
-  owner: string;
-  repo: string;
 }
 
 export default class CreateCommand extends Command {
@@ -24,17 +20,12 @@ export default class CreateCommand extends Command {
   token = Option.String(`-t,--token`, { required: false });
 
   private gh: IGithubClient | undefined;
-  private user = '';
+  private address: GithubAddress;
 
   async execute(): Promise<void> {
     await this.getUserInputParams();
 
-    const workspace = new Workspace(
-      this.name || '',
-      this.user || '',
-      this.repo || '',
-      this.token || '',
-    );
+    const workspace = new Workspace(this.name || '', this.address, this.token || '');
     workspace.save();
     console.log(`
 ${chalk.green`Create a new workspace for Macrunner successfully`}
@@ -57,14 +48,8 @@ To list all your workspaces, you could use the follow command
   private async getUserInputParams(): Promise<void> {
     // get token
     this.token = await this.getGithubToken(this.token, true);
-
-    // get repo
     this.clearConsole();
-    const { owner, repo } = await this.getGithubRepo(this.repo);
-    this.user = owner;
-    this.repo = repo;
-
-    // get name
+    this.address = await this.getGithubAddress(this.repo);
     this.clearConsole();
     this.name = await this.getWorkspaceName(this.name);
   }
@@ -182,8 +167,8 @@ Macrunner needs repo scope to manage the self hosted runner.
     return true;
   }
 
-  private async getGithubRepo(value: string | undefined): Promise<GithubRepo> {
-    const repoValue = value
+  private async getGithubAddress(value: string | undefined): Promise<GithubAddress> {
+    const addressValue = value
       ? value
       : await this.getInputFromUser(
           `
@@ -198,60 +183,39 @@ The repo could be in following format:
 `,
           'What is your github repo/org?',
         );
-    const tokens = repoValue.split('/');
-    const user = tokens[0];
-    const repo = tokens.length > 1 ? tokens[1] : '';
-    const isOrg = repo === '';
+    const address = GithubAddress.fromPath(addressValue);
+
+    if (!address) {
+      this.clearConsole();
+      return await this.getGithubAddress(undefined);
+    }
 
     if (!this.gh) {
-      return {
-        owner: user,
-        repo,
-      };
+      return address;
     }
 
     const gh = this.gh;
-    const isValidRepo = isOrg
-      ? await this.checkConditionList([
-          {
-            condition: () => gh.isOrgExist(user),
-            message: `
-Organization ${user} does not exist.
+    const isValidRepo = await this.checkConditionList([
+      {
+        condition: () => gh.isAddressExist(address),
+        message: `
+${address.toString()} does not exist.
 Please enter a valid github repo/organization.
 `,
-          },
-          {
-            condition: () => gh.hasPermissionsToAddActionsRunnerForOrg(user),
-            message: `
-The current access token does not have access to github actions of organization ${user}.
+      },
+      {
+        condition: () => gh.hasPermissionToManageRunner(address),
+        message: `
+The current access token does not have access to github actions of ${address.toString()}
 Please enter a valid github repo/organization.
 `,
-          },
-        ])
-      : await this.checkConditionList([
-          {
-            condition: () => gh.isRepoExist(user, repo),
-            message: `
-Repo ${user}/${repo} does not exist.
-Please enter a valid github repo/organization.
-`,
-          },
-          {
-            condition: () => gh.hasPermissionsToAddActionsRunnerForRepo(user, repo),
-            message: `
-The current access token does not have access to github actions of repo ${user}/${repo}.
-Please enter a valid github repo/organization.
-`,
-          },
-        ]);
+      },
+    ]);
 
     if (!isValidRepo) {
-      return await this.getGithubRepo(undefined);
+      return await this.getGithubAddress(undefined);
     }
 
-    return {
-      owner: user,
-      repo,
-    };
+    return address;
   }
 }

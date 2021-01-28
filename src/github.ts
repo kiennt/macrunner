@@ -1,18 +1,14 @@
 import fetch from 'node-fetch';
 import { Octokit } from '@octokit/rest';
+import { GithubAddress } from './github_address';
 
 export interface IGithubClient {
   hasScope(scope: string): Promise<boolean>;
 
-  isOrgExist(org: string): Promise<boolean>;
-  hasPermissionsToAddActionsRunnerForOrg(org: string): Promise<boolean>;
-  registerNewRunnerForOrg(org: string): Promise<string>;
-  getRunnerForOrg(org: string): Promise<string>;
-
-  isRepoExist(owner: string, repo: string): Promise<boolean>;
-  hasPermissionsToAddActionsRunnerForRepo(owner: string, repo: string): Promise<boolean>;
-  registerNewRunnerForRepo(owner: string, repo: string): Promise<string>;
-  getRunnerForRepo(owner: string, repo: string): Promise<string>;
+  isAddressExist(address: GithubAddress): Promise<boolean>;
+  hasPermissionToManageRunner(address: GithubAddress): Promise<boolean>;
+  registerNewRunner(address: GithubAddress): Promise<string>;
+  getRunnerDownloadURL(address: GithubAddress): Promise<string>;
 }
 
 export class GithubClient extends Object implements IGithubClient {
@@ -41,35 +37,22 @@ export class GithubClient extends Object implements IGithubClient {
     return scopes.includes(scope);
   }
 
-  async hasPermissionsToAddActionsRunnerForRepo(owner: string, repo: string): Promise<boolean> {
+  async hasPermissionToManageRunner(address: GithubAddress): Promise<boolean> {
     try {
-      await this.client.actions.listSelfHostedRunnersForRepo({
-        owner,
-        repo,
-      });
+      address.isOrg()
+        ? await this.client.actions.listSelfHostedRunnersForOrg(address.toOrg())
+        : await this.client.actions.listSelfHostedRunnersForRepo(address.toRepo());
       return true;
     } catch (err) {
       return false;
     }
   }
 
-  async hasPermissionsToAddActionsRunnerForOrg(org: string): Promise<boolean> {
+  async isAddressExist(address: GithubAddress): Promise<boolean> {
     try {
-      await this.client.actions.listSelfHostedRunnersForOrg({
-        org,
-      });
-      return true;
-    } catch (err) {
-      return false;
-    }
-  }
-
-  async isRepoExist(owner: string, repo: string): Promise<boolean> {
-    try {
-      const resp = await this.client.repos.get({
-        owner,
-        repo,
-      });
+      const resp = address.isOrg()
+        ? await this.client.orgs.get(address.toOrg())
+        : await this.client.repos.get(address.toRepo());
 
       return resp.data.id !== undefined;
     } catch (err) {
@@ -77,51 +60,17 @@ export class GithubClient extends Object implements IGithubClient {
     }
   }
 
-  async isUserExist(username: string): Promise<boolean> {
-    try {
-      const resp = await this.client.users.getByUsername({
-        username,
-      });
-      return resp.data.id !== undefined;
-    } catch (err) {
-      return false;
-    }
-  }
-
-  async isOrgExist(org: string): Promise<boolean> {
-    try {
-      const resp = await this.client.orgs.get({
-        org,
-      });
-      return resp.data.id !== undefined;
-    } catch (err) {
-      return false;
-    }
-  }
-
-  async registerNewRunnerForRepo(owner: string, repo: string): Promise<string> {
-    const resp = await this.client.actions.createRegistrationTokenForRepo({
-      owner,
-      repo,
-    });
+  async registerNewRunner(address: GithubAddress): Promise<string> {
+    const resp = address.isOrg()
+      ? await this.client.actions.createRegistrationTokenForOrg(address.toOrg())
+      : await this.client.actions.createRegistrationTokenForRepo(address.toRepo());
     return resp.data.token;
   }
 
-  async registerNewRunnerForOrg(org: string): Promise<string> {
-    const resp = await this.client.actions.createRegistrationTokenForOrg({
-      org,
-    });
-    return resp.data.token;
-  }
-
-  async getRunnerForOrg(org: string): Promise<string> {
-    const resp = await this.client.actions.listRunnerApplicationsForOrg({ org });
-    const apps = resp.data.filter((item) => item.os === 'osx');
-    return apps[0].download_url;
-  }
-
-  async getRunnerForRepo(owner: string, repo: string): Promise<string> {
-    const resp = await this.client.actions.listRunnerApplicationsForRepo({ owner, repo });
+  async getRunnerDownloadURL(address: GithubAddress): Promise<string> {
+    const resp = address.isOrg()
+      ? await this.client.actions.listRunnerApplicationsForOrg(address.toOrg())
+      : await this.client.actions.listRunnerApplicationsForRepo(address.toRepo());
     const apps = resp.data.filter((item) => item.os === 'osx');
     return apps[0].download_url;
   }

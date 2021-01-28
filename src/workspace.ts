@@ -5,12 +5,17 @@ import { v4 as uuidv4 } from 'uuid';
 import shelljs from 'shelljs';
 
 import { IGithubClient, GithubClient } from './github';
+import { GithubAddress } from './github_address';
 
 interface Runner {
   id: string;
 }
 
 export interface IWorkspace {
+  readonly id: string;
+  readonly token: string;
+  readonly address: GithubAddress;
+
   createNewRunner(): Promise<Runner>;
   deleteRunner(id: string): Promise<void>;
   listRunners(): Promise<Runner[]>;
@@ -18,14 +23,14 @@ export interface IWorkspace {
 }
 
 export class Workspace extends Object implements IWorkspace {
-  private id = '';
   private _gh: IGithubClient;
   private runners: Runner[] = [];
 
+  id = '';
+
   constructor(
     readonly name: string,
-    readonly user: string,
-    readonly repo: string,
+    readonly address: GithubAddress,
     readonly token: string,
     id?: string | undefined,
   ) {
@@ -41,7 +46,7 @@ export class Workspace extends Object implements IWorkspace {
   }
 
   private async downloadRunnerAppIfNeeded(): Promise<string> {
-    const url = await this.gh().getRunnerForRepo(this.user, this.repo);
+    const url = await this.gh().getRunnerDownloadURL(this.address);
     // runner url has format
     // https://github.com/actions/runner/releases/download/v2.164.0/actions-runner-osx-x64-2.164.0.tar.gz
     const tokens = url.split('/');
@@ -73,13 +78,15 @@ export class Workspace extends Object implements IWorkspace {
     fs.mkdirSync(workspaceRunnerPath, { recursive: true });
     shelljs.exec(`tar xvf ${runnerPath} -C ${workspaceRunnerPath}`);
 
-    // register runner to github
-    const token = await this.gh().registerNewRunnerForRepo(this.user, this.repo);
+    // register the new runner to github
+    const token = await this.gh().registerNewRunner(this.address);
+
+    // add the new runner into macosx services
     process.chdir(workspaceRunnerPath);
     shelljs.exec(`
       ./config.sh  \
           --unattended \
-          --url https://github.com/${this.user}/${this.repo} \
+          --url https://github.com/${this.address.toPath()}
           --token ${token} \
           --name macrunner.${this.name}.runner${runnerId} \
           --labels self-hosted,OSX,X64,macrunner,${this.name} \
@@ -115,8 +122,7 @@ export class Workspace extends Object implements IWorkspace {
         {
           id: this.id,
           name: this.name,
-          user: this.user,
-          repo: this.repo,
+          address: this.address,
           token: this.token,
           runners: [],
         },
